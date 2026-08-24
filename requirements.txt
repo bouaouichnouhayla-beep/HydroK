@@ -1,0 +1,8 @@
+numpy>=1.26,<3
+sympy>=1.12,<2
+# Matplotlib 3.11+ supprime l'argument "labels" utilisé par les boxplots actuels.
+# HydroK est validé avec les versions 3.8 à 3.10.
+matplotlib>=3.8,<3.11
+Pillow>=10,<13
+reportlab>=4,<6
+tkintermapview>=1.30,<2

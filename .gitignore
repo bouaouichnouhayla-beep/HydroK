@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Logs
+logs/
+*.log
+
+# Bases de données locales
+*.db
+*.sqlite
+*.sqlite3
+
+# Exports générés
+*.csv
+*.pdf
+
+# Fichiers temporaires
+*.tmp
+~$*
+.~lock.*
+.DS_Store
+Thumbs.db
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Outils locaux
+.agents/
+.codex/
+
+# IDE
+.vscode/
+.idea/
