@@ -40,4 +40,6 @@ Sous Debian ou Ubuntu, le paquet système `python3-tk` peut être nécessaire po
 
 La carte interactive des points utilise OpenStreetMap et nécessite une connexion internet pour charger les tuiles.
 
-La base principale est enregistrée dans `conductivite.db`, à la racine du projet. Les journaux techniques sont écrits dans `logs/hydrok.log`.
+La base de données SQLite conductivite.db est créée automatiquement à la racine du projet lors du premier lancement de HydroK. Elle est ensuite utilisée pour stocker localement les zones, les points de mesure, les répétitions et le matériel enregistrés dans l’application.
+
+Les journaux techniques sont enregistrés dans le dossier logs/.
