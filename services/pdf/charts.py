@@ -10,7 +10,6 @@ from reportlab.platypus import (
 )
 
 from ui import charts
-from ui.maps import PointCarte
 from ui.maps.interactive_map import normaliser_points
 from ui.maps.static_osm import generer_carte_osm_png
 from utils.logging_config import obtenir_logger
@@ -76,93 +75,74 @@ class PdfChartsMixin:
                 charts.graphique_repartition_profondeurs(
                     sorted(profondeurs),
                     [profondeurs[p] for p in sorted(profondeurs)],
-                    figsize=(7.2, 3.8),
+                    figsize=(11.5, 3.8),
                 )
             )),
         ]
-        points_carte = [
-            PointCarte(
-                nom=point.nom,
-                latitude=point.latitude,
-                longitude=point.longitude,
-                facies=point.facies,
-                k_moyen=moyennes_k.get(point.id),
-            )
-            for point in points
-        ]
-        index_carte = None
-        if normaliser_points(points_carte):
-            index_carte = len(graphiques)
-            graphiques.append((
-                "Localisation des points de mesure",
-                lambda: self._generer_carte_pdf_png(points_carte),
+        numero = 1
+        premiere_ligne = []
+        for titre, fabrique in graphiques[:2]:
+            premiere_ligne.append(self._cellule_graphique(
+                titre, fabrique, numero,
             ))
+            numero += 1
 
-        histoire = []
-        for index in range(0, len(graphiques), 2):
-            if index_carte is not None and index == index_carte - 1:
-                titre_graphique, fabrique_graphique = graphiques[index]
-                titre_carte, fabrique_carte = graphiques[index_carte]
-                cellule_graphique = self._cellule_graphique(
-                    titre_graphique, fabrique_graphique, index + 1,
-                )
-                cellule_carte = self._cellule_png(
-                    titre_carte, fabrique_carte(), index_carte + 1,
-                    largeur_max=238 * mm, hauteur_max=62 * mm,
-                )
-                grille = Table(
-                    [[cellule_graphique, []], [cellule_carte, None]],
-                    colWidths=(123 * mm, 123 * mm),
-                    hAlign="CENTER",
-                )
-                grille.setStyle(TableStyle([
-                    ("SPAN", (0, 1), (1, 1)),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 4 * mm),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 4 * mm),
-                    ("TOPPADDING", (0, 0), (-1, -1), 0),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm),
-                    ("BOX", (0, 0), (-1, -1), 0, colors.white),
-                ]))
-                histoire.extend((PageBreak(), grille))
-                break
+        deuxieme_ligne = []
+        for titre, fabrique in graphiques[2:4]:
+            deuxieme_ligne.append(self._cellule_graphique(
+                titre, fabrique, numero,
+            ))
+            numero += 1
+        titre, fabrique = graphiques[4]
+        troisieme_ligne = self._cellule_graphique(
+            titre, fabrique, numero,
+            largeur_max=238 * mm, hauteur_max=73 * mm,
+        )
 
-            cellules = []
-            for decalage, (titre, fabrique) in enumerate(
-                graphiques[index:index + 2]
-            ):
-                numero = index + decalage + 1
-                if index + decalage == index_carte:
-                    cellules.append(self._cellule_png(
-                        titre, fabrique(), numero, largeur_max=115 * mm,
-                    ))
-                else:
-                    cellules.append(self._cellule_graphique(
-                        titre, fabrique, numero,
-                    ))
-            if len(cellules) == 1:
-                cellules.append([])
-
-            grille = Table(
-                [cellules], colWidths=(123 * mm, 123 * mm),
-                hAlign="CENTER",
-            )
-            grille.setStyle(TableStyle([
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4 * mm),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 4 * mm),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4 * mm),
-                ("BOX", (0, 0), (-1, -1), 0, colors.white),
-            ]))
-            histoire.extend((PageBreak(), grille))
+        style_grille = TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4 * mm),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4 * mm),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4 * mm),
+            ("BOX", (0, 0), (-1, -1), 0, colors.white),
+        ])
+        grille_premiere_page = Table(
+            [premiere_ligne], colWidths=(123 * mm, 123 * mm),
+            hAlign="CENTER",
+        )
+        grille_premiere_page.setStyle(style_grille)
+        grille_deuxieme_page = Table(
+            [deuxieme_ligne, [troisieme_ligne, None]],
+            colWidths=(123 * mm, 123 * mm), hAlign="CENTER",
+        )
+        grille_deuxieme_page.setStyle(TableStyle([
+            ("SPAN", (0, 1), (1, 1)),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4 * mm),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4 * mm),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4 * mm),
+            ("BOX", (0, 0), (-1, -1), 0, colors.white),
+        ]))
+        histoire = [
+            PageBreak(),
+            Paragraph("Statistiques", self.styles["titre_section"]),
+            Spacer(1, 4 * mm),
+            grille_premiere_page,
+            PageBreak(),
+            grille_deuxieme_page,
+        ]
         return histoire
 
-    def _generer_carte_pdf_png(self, points_carte):
+    def _generer_carte_pdf_png(
+        self, points_carte, largeur=1400, hauteur=340,
+        figsize_secours=(9.0, 3.8),
+    ):
         """Génère la carte OSM, ou l'ancienne carte en cas d'indisponibilité."""
         try:
             return generer_carte_osm_png(
-                points_carte, largeur=1400, hauteur=340,
+                points_carte, largeur=largeur, hauteur=hauteur,
             )
         except Exception:  # Le fond distant ne doit jamais bloquer le rapport.
             logger.exception(
@@ -174,17 +154,23 @@ class PdfChartsMixin:
                 [latitude for _, latitude, _ in points_valides],
                 [point.nom for point, _, _ in points_valides],
                 [point.k_moyen for point, _, _ in points_valides],
-                figsize=(9.0, 3.8),
+                figsize=figsize_secours,
             )
             return charts.rendre_figure_png(
                 lambda: self._figure_sans_titre(figure)
             )
 
-    def _cellule_graphique(self, titre, fabrique, numero):
+    def _cellule_graphique(
+        self, titre, fabrique, numero,
+        largeur_max=112 * mm, hauteur_max=105 * mm,
+    ):
         png = charts.rendre_figure_png(
             lambda: self._figure_sans_titre(fabrique)
         )
-        return self._cellule_png(titre, png, numero)
+        return self._cellule_png(
+            titre, png, numero,
+            largeur_max=largeur_max, hauteur_max=hauteur_max,
+        )
 
     def _cellule_png(
         self, titre, png, numero, largeur_max=112 * mm,

@@ -41,3 +41,10 @@ htmlcov/
 # IDE
 .vscode/
 .idea/
+
+# Builds et distributions
+.venv-build/
+build/
+dist/
+HydroK-Linux/
+HydroK-Linux.zip

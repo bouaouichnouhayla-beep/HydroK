@@ -43,3 +43,48 @@ La carte interactive des points utilise OpenStreetMap et nécessite une connexio
 La base de données SQLite conductivite.db est créée automatiquement à la racine du projet lors du premier lancement de HydroK. Elle est ensuite utilisée pour stocker localement les zones, les points de mesure, les répétitions et le matériel enregistrés dans l’application.
 
 Les journaux techniques sont enregistrés dans le dossier logs/.
+
+## Installation de HydroK sous Linux
+
+### Version distribuable
+
+La version Linux prête à être installée est disponible dans :
+
+HydroK-Linux.zip
+
+### Installation sur une autre machine Linux
+
+1. Copier `HydroK-Linux.zip` sur la machine Linux.
+
+2. Décompresser l’archive.
+
+3. Ouvrir le dossier `HydroK-Linux`.
+
+4. Ouvrir un terminal dans ce dossier.
+
+5. Exécuter :
+
+chmod +x install_linux.sh
+./install_linux.sh
+
+6. Une fois l’installation terminée, ouvrir le menu des applications.
+
+7. Rechercher `HydroK` puis lancer l’application.
+
+### Prérequis
+
+Python n’a pas besoin d’être installé séparément : la distribution contient
+les composants nécessaires à l’exécution de HydroK.
+
+### Connexion Internet
+
+Une connexion Internet est nécessaire pour charger le fond de carte
+OpenStreetMap.
+
+Les autres fonctionnalités restent utilisables hors connexion selon leur
+fonctionnement prévu.
+
+### Données utilisateur
+
+Les données de HydroK sont enregistrées dans les dossiers utilisateur Linux
+et restent séparées des fichiers du programme.

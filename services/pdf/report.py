@@ -1,11 +1,13 @@
 """Composition ordonnée des sections du rapport PDF HydroK."""
 
+import io
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.units import mm
-from reportlab.platypus import HRFlowable, PageBreak, Paragraph, Spacer
+from reportlab.platypus import HRFlowable, Image, PageBreak, Paragraph, Spacer
 
+from ui.maps import PointCarte
 from version import APPLICATION_VERSION
 
 
@@ -18,8 +20,32 @@ class PdfReportMixin:
         methodes = sorted({
             ligne.methode for ligne in donnees.repetitions if ligne.methode
         })
+        points_carte = [
+            PointCarte(
+                nom=point.nom,
+                latitude=point.latitude,
+                longitude=point.longitude,
+                facies=point.facies,
+                k_moyen=moyennes_k.get(point.id),
+            )
+            for point in points
+        ]
+        flux_carte = io.BytesIO(self._generer_carte_pdf_png(
+            points_carte, largeur=1400, hauteur=650,
+            figsize_secours=(14.0, 6.5),
+        ))
+        carte_couverture = Image(flux_carte)
+        facteur_carte = min(
+            245 * mm / carte_couverture.imageWidth,
+            85 * mm / carte_couverture.imageHeight,
+        )
+        carte_couverture.drawWidth *= facteur_carte
+        carte_couverture.drawHeight *= facteur_carte
+        carte_couverture.hAlign = "CENTER"
+        carte_couverture._hydrok_buffer = flux_carte
+
         histoire = [
-            Spacer(1, 24 * mm),
+            Spacer(1, 12 * mm),
             Paragraph("HydroK", self.styles["couverture_marque"]),
             Spacer(1, 5 * mm),
             HRFlowable(
@@ -30,23 +56,18 @@ class PdfReportMixin:
                 "Rapport de mesure de conductivité hydraulique",
                 self.styles["couverture_titre"],
             ),
-            Spacer(1, 15 * mm),
+            Spacer(1, 7 * mm),
             Paragraph(escape(str(nom_etude)), self.styles["couverture_etude"]),
-            Spacer(1, 12 * mm),
+            Spacer(1, 5 * mm),
         ]
-        resume = (
-            ("Date de génération", instant.strftime("%d/%m/%Y %H:%M")),
-            ("Nombre de points", len(points)),
-            ("Nombre total de répétitions", len(donnees.repetitions)),
-            ("Nombre de matériels", len(donnees.materiels)),
-        )
         histoire.extend((
-            self._table_info(resume, largeurs=(65 * mm, 70 * mm)),
-            Spacer(1, 15 * mm),
             Paragraph(
-                "Document scientifique généré automatiquement par HydroK",
+                "Date de génération : "
+                f"{instant.strftime('%d/%m/%Y %H:%M')}",
                 self.styles["mention_couverture"],
             ),
+            Spacer(1, 5 * mm),
+            carte_couverture,
             PageBreak(),
             Paragraph("Sommaire", self.styles["titre_sommaire"]),
             Spacer(1, 8 * mm),
@@ -151,13 +172,13 @@ class PdfReportMixin:
             for point in points if moyennes_k.get(point.id) is not None
         ]
         if valeurs:
-            point_max, k_max = max(valeurs, key=lambda element: element[1])
-            k_min = min(valeur for _, valeur in valeurs)
+            point_min, k_min = min(valeurs, key=lambda element: element[1])
+            k_max = max(valeur for _, valeur in valeurs)
             texte += (
                 " Les conductivités hydrauliques moyennes par point sont "
                 f"comprises entre {self._format_k_markup(k_min)} et "
                 f"{self._format_k_markup(k_max)} m/s. Le point "
-                f"{escape(str(point_max.nom))} présente la valeur moyenne "
-                "la plus élevée."
+                f"{escape(str(point_min.nom))} présente la conductivité "
+                "hydraulique moyenne la plus faible."
             )
         return texte

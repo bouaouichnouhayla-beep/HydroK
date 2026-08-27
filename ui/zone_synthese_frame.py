@@ -178,15 +178,6 @@ class ZoneSyntheseFrame(tk.Frame):
                 prof,
             ))
 
-        self._section(racine, "Détail des points et répétitions")
-        afficher_repetitions(
-            racine, donnees_tableaux.repetitions, afficher_point=True
-        )
-
-        self._section(racine, "Matériel utilisé")
-        afficher_materiels_etude(racine, donnees_tableaux.materiels)
-
-        # ------ Graphiques ------
         points_carte = [
             PointCarte(
                 nom=d["point"].nom,
@@ -197,6 +188,18 @@ class ZoneSyntheseFrame(tk.Frame):
             )
             for d in pt_data
         ]
+        self._section(racine, "Localisation des points de mesure")
+        self._ajouter_carte_interactive(racine, points_carte)
+
+        self._section(racine, "Détail des points et répétitions")
+        afficher_repetitions(
+            racine, donnees_tableaux.repetitions, afficher_point=True
+        )
+
+        self._section(racine, "Matériel utilisé")
+        afficher_materiels_etude(racine, donnees_tableaux.materiels)
+
+        # ------ Graphiques ------
         if _CHARTS_OK and points:
             self._section(racine, "Graphiques statistiques")
 
@@ -309,9 +312,6 @@ class ZoneSyntheseFrame(tk.Frame):
 
             grille_graphiques.bind("<Configure>", adapter_grille)
 
-            self._section(racine, "Localisation des points de mesure")
-            self._ajouter_carte_interactive(racine, points_carte)
-
         elif not points:
             EmptyState(
                 racine,
@@ -319,12 +319,6 @@ class ZoneSyntheseFrame(tk.Frame):
                 titre="Aucun point de mesure",
                 sous_texte="Ajoutez des points à cette étude pour voir les statistiques.",
             ).pack(fill="x", pady=20)
-            self._section(racine, "Localisation des points de mesure")
-            self._ajouter_carte_interactive(racine, [])
-
-        elif points:
-            self._section(racine, "Localisation des points de mesure")
-            self._ajouter_carte_interactive(racine, points_carte)
 
         # ------ Bouton retour ------
         tk.Frame(racine, bg=theme.BORDER, height=1).pack(fill="x", pady=(10, 16))

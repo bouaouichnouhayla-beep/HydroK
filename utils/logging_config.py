@@ -1,11 +1,31 @@
 """Configuration de journalisation commune à HydroK."""
 
 import logging
+import os
+import sys
 from pathlib import Path
 
 
-LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
-LOG_FILE = LOG_DIR / "hydrok.log"
+def _chemin_fichier_log() -> Path:
+    if not sys.platform.startswith("linux"):
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        racine_etat = (
+            Path(local_appdata).expanduser()
+            if local_appdata
+            else Path.home()
+        )
+        return racine_etat / "HydroK" / "logs" / "hydrok.log"
+    xdg_state_home = os.environ.get("XDG_STATE_HOME")
+    racine_etat = (
+        Path(xdg_state_home).expanduser()
+        if xdg_state_home
+        else Path.home() / ".local" / "state"
+    )
+    return racine_etat / "HydroK" / "hydrok.log"
+
+
+LOG_FILE = _chemin_fichier_log()
+LOG_DIR = LOG_FILE.parent
 _HANDLER_MARKER = "hydrok_file_handler"
 
 

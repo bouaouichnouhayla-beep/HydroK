@@ -10,6 +10,11 @@ from ui.maps.interactive_map import (
     CarteInteractive,
     PointCarte,
     calculer_emprise,
+    calculer_echelle_k,
+    couleur_k,
+    formater_k_carte,
+    graduations_k,
+    normaliser_k,
     normaliser_points,
 )
 from ui.zone_synthese_frame import ZoneSyntheseFrame
@@ -50,11 +55,35 @@ class FauxWidget:
         return None
 
 
+class FauxCanvas(FauxWidget):
+    def bind(self, *args, **kwargs):
+        return None
+
+    def delete(self, *args, **kwargs):
+        return None
+
+    def winfo_width(self):
+        return self.options.get("width", 112)
+
+    def winfo_height(self):
+        return 320
+
+    def create_text(self, *args, **kwargs):
+        return None
+
+    def create_rectangle(self, *args, **kwargs):
+        return None
+
+    def create_line(self, *args, **kwargs):
+        return None
+
+
 class FauxMarqueur:
-    def __init__(self, latitude, longitude, text, command):
+    def __init__(self, latitude, longitude, text, command, **kwargs):
         self.position = (latitude, longitude)
         self.text = text
         self.command = command
+        self.options = kwargs
         self.data = None
         self.supprime = False
 
@@ -81,8 +110,10 @@ class FausseCarte:
     def pack(self, *args, **kwargs):
         return None
 
-    def set_marker(self, latitude, longitude, text=None, command=None):
-        marqueur = FauxMarqueur(latitude, longitude, text, command)
+    def set_marker(self, latitude, longitude, text=None, command=None, **kwargs):
+        marqueur = FauxMarqueur(
+            latitude, longitude, text, command, **kwargs,
+        )
         self.marqueurs.append(marqueur)
         return marqueur
 
@@ -103,6 +134,7 @@ class InteractiveMapTest(unittest.TestCase):
             patch.object(CarteInteractive, "_verifier_acces_tuiles"),
             patch.object(module_carte.tk, "StringVar", FauxVariable),
             patch.object(module_carte.tk, "Label", FauxWidget),
+            patch.object(module_carte.tk, "Canvas", FauxCanvas),
             patch.object(module_carte, "TkinterMapView", FausseCarte),
         ):
             carte = CarteInteractive(Mock(), hauteur=320)
@@ -283,6 +315,39 @@ class InteractiveMapTest(unittest.TestCase):
             PointCarte("Valide", 45.0, 2.0),
         ])
         self.assertEqual([point.nom for point, _, _ in valides], ["Valide"])
+
+    def test_precision_k_proches_et_normalisation_commune(self):
+        points = normaliser_points([
+            PointCarte("p1", 45.0, 2.0, k_moyen=0.0001808891385374027),
+            PointCarte("p2", 45.1, 2.1, k_moyen=0.0001164385517563855),
+            PointCarte("p3", 45.2, 2.2, k_moyen=0.0001808034393440735),
+        ])
+        valeurs, echelle = calculer_echelle_k(points)
+
+        self.assertEqual(echelle, (valeurs[1], valeurs[0]))
+        self.assertEqual(normaliser_k(valeurs[1], echelle), 0.0)
+        self.assertEqual(normaliser_k(valeurs[0], echelle), 1.0)
+        self.assertGreater(normaliser_k(valeurs[2], echelle), 0.99)
+        self.assertNotEqual(
+            couleur_k(valeurs[0], echelle), couleur_k(valeurs[2], echelle)
+        )
+        self.assertEqual(graduations_k(echelle)[0], echelle[0])
+        self.assertEqual(graduations_k(echelle)[-1], echelle[1])
+        self.assertIn("e-04", formater_k_carte(valeurs[1], echelle))
+
+    def test_k_identiques_gardent_bornes_exactes_et_couleur_unique(self):
+        points = normaliser_points([
+            PointCarte("P1", 45.0, 2.0, k_moyen=1.23456789e-8),
+            PointCarte("P2", 46.0, 3.0, k_moyen=1.23456789e-8),
+        ])
+        valeurs, echelle = calculer_echelle_k(points)
+
+        self.assertEqual(echelle, (1.23456789e-8, 1.23456789e-8))
+        self.assertEqual(normaliser_k(valeurs[0], echelle), 0.5)
+        self.assertEqual(
+            couleur_k(valeurs[0], echelle), couleur_k(valeurs[1], echelle)
+        )
+        self.assertEqual(graduations_k(echelle), [1.23456789e-8])
 
 
 if __name__ == "__main__":

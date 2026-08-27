@@ -1,5 +1,6 @@
 """Fenêtre principale et navigation de l'application HydroK."""
 
+from pathlib import Path
 import tkinter as tk
 from utils.logging_config import obtenir_logger
 from ui.error_handler import afficher_erreur_inattendue
@@ -29,7 +30,13 @@ class MainWindow:
         self.root.report_callback_exception = self._gerer_exception_callback
         self.root.protocol("WM_DELETE_WINDOW", self.fermer)
         self.root.withdraw()
-        self.root.title("HydroK — Conductivité Hydraulique")
+        self.root.title("HydroK — Conductivité hydraulique")
+        chemin_icone = (
+            Path(__file__).resolve().parents[1] / "assets" / "icone_hydrok.png"
+        )
+        self._icone_source = tk.PhotoImage(file=str(chemin_icone))
+        self._icone_application = self._icone_source.subsample(8, 8)
+        self.root.iconphoto(True, self._icone_application)
 
         theme.apply_theme(self.root)
 

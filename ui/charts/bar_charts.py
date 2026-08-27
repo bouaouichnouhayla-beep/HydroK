@@ -154,7 +154,7 @@ def graphique_repetitions_par_profondeur(groupes, figsize=(6.2, 3.4)):
         ncol=nombre_colonnes_legende, fontsize=7.5, frameon=False,
     )
     haut_axes = max(0.55, 0.79 - (nombre_lignes_legende - 1) * 0.06)
-    fig.subplots_adjust(left=0.09, right=0.72, bottom=0.17, top=haut_axes)
+    fig.subplots_adjust(left=0.14, right=0.78, bottom=0.16, top=haut_axes)
     return fig
 
 

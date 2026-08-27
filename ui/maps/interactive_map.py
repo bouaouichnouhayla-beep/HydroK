@@ -7,6 +7,9 @@ import threading
 import tkinter as tk
 from urllib.request import Request, urlopen
 
+from matplotlib import colormaps
+from matplotlib.colors import LinearSegmentedColormap, to_hex
+
 from ui import theme
 from utils.logging_config import obtenir_logger
 
@@ -18,6 +21,13 @@ except ImportError:  # L'interface reste utilisable si l'installation est incomp
 
 logger = obtenir_logger(__name__)
 URL_TUILES_OSM = "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"
+COULEUR_K_INDISPONIBLE = "#8B9498"
+# Viridis reste perceptuellement uniforme, mais sa version Matplotlib standard
+# ne contient que 256 couleurs. Cette interpolation plus fine évite de perdre
+# prématurément une différence numérique lors de la conversion en couleur RGB.
+PALETTE_K = LinearSegmentedColormap.from_list(
+    "viridis_hydrok", colormaps["viridis"].colors, N=65536
+)
 
 
 @dataclass(frozen=True)
@@ -77,6 +87,66 @@ def calculer_emprise(points_valides):
     return coin_haut_gauche, coin_bas_droit
 
 
+def calculer_echelle_k(points_valides):
+    """Retourne les valeurs de K et les bornes communes de la palette."""
+    valeurs = []
+    for point, _, _ in points_valides:
+        try:
+            valeur = float(point.k_moyen)
+        except (TypeError, ValueError):
+            valeur = math.nan
+        valeurs.append(valeur if math.isfinite(valeur) else math.nan)
+
+    valeurs_finies = [valeur for valeur in valeurs if math.isfinite(valeur)]
+    if not valeurs_finies:
+        return valeurs, None
+    minimum, maximum = min(valeurs_finies), max(valeurs_finies)
+    return valeurs, (minimum, maximum)
+
+
+def normaliser_k(valeur, echelle):
+    """Normalise K sur ses bornes exactes, sans modifier sa distribution."""
+    if echelle is None or not math.isfinite(valeur):
+        return math.nan
+    minimum, maximum = echelle
+    if minimum == maximum:
+        return 0.5
+    return min(1.0, max(0.0, (valeur - minimum) / (maximum - minimum)))
+
+
+def couleur_k(valeur, echelle):
+    """Convertit une valeur de K en couleur viridis, ou en gris neutre."""
+    position = normaliser_k(valeur, echelle)
+    if not math.isfinite(position):
+        return COULEUR_K_INDISPONIBLE
+    return to_hex(PALETTE_K(position), keep_alpha=False)
+
+
+def graduations_k(echelle, nombre=5):
+    """Produit des graduations linéaires issues des bornes réelles."""
+    if echelle is None:
+        return []
+    minimum, maximum = echelle
+    if minimum == maximum:
+        return [minimum]
+    return [
+        minimum + (maximum - minimum) * index / (nombre - 1)
+        for index in range(nombre)
+    ]
+
+
+def formater_k_carte(valeur, echelle):
+    """Formate une graduation sans masquer les petits écarts de l'échelle."""
+    chiffres = 4
+    graduations = graduations_k(echelle)
+    while chiffres < 15:
+        libelles = [f"{v:.{chiffres - 1}e}" for v in graduations]
+        if len(libelles) == len(set(libelles)):
+            break
+        chiffres += 1
+    return f"{valeur:.{chiffres - 1}e}".replace(".", ",")
+
+
 class CarteInteractive(tk.Frame):
     """Affiche les points d'une étude sur une carte OpenStreetMap."""
 
@@ -90,7 +160,9 @@ class CarteInteractive(tk.Frame):
         self._resultat_reseau = Queue(maxsize=1)
         self._rappel_reseau = None
         self._rappel_ajustement = None
+        self._rappel_legende = None
         self._thread_reseau = None
+        self._echelle_k = None
 
         self._details = tk.StringVar(
             value=("Cliquez sur un marqueur pour afficher ses informations.  "
@@ -115,7 +187,6 @@ class CarteInteractive(tk.Frame):
         try:
             self._carte = TkinterMapView(self, corner_radius=0)
             self._carte.set_tile_server(URL_TUILES_OSM, max_zoom=19)
-            self._carte.pack(fill="both", expand=True)
             tk.Label(
                 self,
                 textvariable=self._details,
@@ -126,7 +197,17 @@ class CarteInteractive(tk.Frame):
                 anchor="w",
                 padx=10,
                 pady=6,
-            ).pack(fill="x")
+            ).pack(side="bottom", fill="x")
+            self._legende = tk.Canvas(
+                self,
+                width=112,
+                bg=theme.SURFACE,
+                highlightbackground=theme.BORDER,
+                highlightthickness=1,
+            )
+            self._legende.pack(side="right", fill="y")
+            self._legende.bind("<Configure>", self._planifier_legende)
+            self._carte.pack(side="left", fill="both", expand=True)
             self._verifier_acces_tuiles()
         except (OSError, RuntimeError, tk.TclError):
             self._carte = None
@@ -142,6 +223,7 @@ class CarteInteractive(tk.Frame):
         self._annuler_rappel("_rappel_ajustement")
         self._supprimer_marqueurs()
         points_valides = normaliser_points(points)
+        self._echelle_k = None
         if self._carte is None:
             return
         if not points_valides:
@@ -150,15 +232,23 @@ class CarteInteractive(tk.Frame):
 
         self._message.place_forget()
         try:
-            for point, latitude, longitude in points_valides:
+            valeurs_k, self._echelle_k = calculer_echelle_k(points_valides)
+            for (point, latitude, longitude), valeur_k in zip(
+                points_valides, valeurs_k
+            ):
+                couleur = couleur_k(valeur_k, self._echelle_k)
                 marqueur = self._carte.set_marker(
                     latitude,
                     longitude,
                     text=str(point.nom),
                     command=self._afficher_details,
+                    marker_color_circle=couleur,
+                    marker_color_outside="#FFFFFF",
                 )
                 marqueur.data = point
                 self._marqueurs.append(marqueur)
+
+            self._dessiner_legende()
 
             emprise = calculer_emprise(points_valides)
             self._rappel_ajustement = self.after_idle(
@@ -169,6 +259,95 @@ class CarteInteractive(tk.Frame):
             self._afficher_message(
                 "La carte OpenStreetMap ne peut pas être affichée."
             )
+
+    def _planifier_legende(self, event=None):
+        if self._fermeture_en_cours:
+            return
+        self._annuler_rappel("_rappel_legende")
+        self._rappel_legende = self.after(100, self._dessiner_legende)
+
+    def _dessiner_legende(self):
+        self._rappel_legende = None
+        if self._fermeture_en_cours or not hasattr(self, "_legende"):
+            return
+        try:
+            canevas = self._legende
+            canevas.delete("all")
+            largeur = max(80, canevas.winfo_width())
+            hauteur = max(180, canevas.winfo_height())
+            canevas.create_text(
+                largeur / 2, 18,
+                text="K moyen\n(m/s)",
+                fill=theme.TEXT,
+                font=theme.f_label(8),
+                justify="center",
+            )
+            if self._echelle_k is None:
+                canevas.create_rectangle(
+                    18, 60, 38, 86,
+                    fill=COULEUR_K_INDISPONIBLE,
+                    outline=theme.BORDER,
+                )
+                canevas.create_text(
+                    44, 73,
+                    text="indisponible",
+                    fill=theme.TEXT_MUTED,
+                    font=theme.f_small(8),
+                    anchor="w",
+                )
+                return
+
+            minimum, maximum = self._echelle_k
+            haut, bas = 52, hauteur - 24
+            if minimum == maximum:
+                couleur = couleur_k(minimum, self._echelle_k)
+                canevas.create_rectangle(
+                    16, haut, 36, haut + 28,
+                    fill=couleur,
+                    outline=theme.BORDER,
+                )
+                canevas.create_text(
+                    45, haut,
+                    text=formater_k_carte(minimum, self._echelle_k),
+                    fill=theme.TEXT_MUTED,
+                    font=theme.f_small(8),
+                    anchor="nw",
+                )
+                canevas.create_text(
+                    16, haut + 38,
+                    text="Toutes les valeurs\nsont identiques",
+                    fill=theme.TEXT_MUTED,
+                    font=theme.f_small(8),
+                    anchor="nw",
+                    justify="left",
+                )
+                return
+
+            nombre_bandes = max(24, min(120, bas - haut))
+            for index in range(nombre_bandes):
+                position = 1.0 - index / max(1, nombre_bandes - 1)
+                y1 = haut + (bas - haut) * index / nombre_bandes
+                y2 = haut + (bas - haut) * (index + 1) / nombre_bandes
+                canevas.create_rectangle(
+                    16, y1, 36, y2 + 1,
+                    fill=to_hex(
+                        PALETTE_K(position), keep_alpha=False,
+                    ),
+                    outline="",
+                )
+            graduations = graduations_k(self._echelle_k, nombre=5)
+            for index, valeur in enumerate(reversed(graduations)):
+                y = haut + (bas - haut) * index / (len(graduations) - 1)
+                canevas.create_line(36, y, 41, y, fill=theme.TEXT_MUTED)
+                canevas.create_text(
+                    45, y,
+                    text=formater_k_carte(valeur, self._echelle_k),
+                    fill=theme.TEXT_MUTED,
+                    font=theme.f_small(8),
+                    anchor="w",
+                )
+        except tk.TclError:
+            logger.debug("Légende cartographique déjà détruite")
 
     def _supprimer_marqueurs(self):
         for marqueur in self._marqueurs:
@@ -278,6 +457,7 @@ class CarteInteractive(tk.Frame):
         self._detruit = True
         self._annuler_rappel("_rappel_reseau")
         self._annuler_rappel("_rappel_ajustement")
+        self._annuler_rappel("_rappel_legende")
         self._supprimer_marqueurs()
         if self._carte is not None:
             self._carte.running = False
