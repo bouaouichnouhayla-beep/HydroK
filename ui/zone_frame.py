@@ -1,12 +1,15 @@
 import tkinter as tk
 import sqlite3
-from tkinter import ttk, messagebox
+import re
+from tkinter import filedialog, ttk, messagebox
 
 from repositories.zone_repository import ZoneRepository
 from repositories.point_repository import PointRepository
 from repositories.repetition_repository import RepetitionRepository
 from services.export_csv_service import ExportCsvService
 from services.export_pdf_service import ExportPdfService
+from services.export_etude_service import export_etude
+from services.import_etude_service import ImportEtudeError, import_etude
 from ui.export_dialog import ExportDialog
 from ui.export_pdf_dialog import ExportPdfDialog
 from ui.zone_dialog import ZoneDialog
@@ -58,6 +61,10 @@ class ZoneFrame(tk.Frame):
 
         bouton_primaire(haut, "+ Nouvelle étude",
                         command=self._ouvrir_creation).pack(side="right", pady=4)
+        bouton_secondaire(haut, "Importer une étude",
+                          command=self._importer_etude).pack(
+                              side="right", padx=(0, 8), pady=4
+                          )
 
         # Card principale
         card = Card(racine, padding=0)
@@ -78,6 +85,9 @@ class ZoneFrame(tk.Frame):
 
         bouton_secondaire(toolbar, "Exporter PDF",
                         command=self._exporter_pdf).pack(side="left", padx=(0, 8), pady=3)
+
+        bouton_secondaire(toolbar, "Exporter",
+                        command=self._exporter_etude).pack(side="left", padx=(0, 8), pady=3)
 
         bouton_secondaire(toolbar, "✎  Modifier",
                         command=self._modifier_zone).pack(side="left", padx=(0, 8), pady=3)
@@ -157,6 +167,68 @@ class ZoneFrame(tk.Frame):
     # ------------------------------------------------------------------
     def _ouvrir_creation(self):
         ZoneDialog(parent=self, refresh_callback=self.charger_zones)
+
+    def _importer_etude(self):
+        fichier = filedialog.askopenfilename(
+            parent=self,
+            title="Importer une étude HydroK",
+            filetypes=[
+                ("Étude HydroK", "*.hydrok"),
+                ("Tous les fichiers", "*.*"),
+            ],
+        )
+        if not fichier:
+            return
+        try:
+            import_etude(fichier)
+        except ImportEtudeError as erreur:
+            messagebox.showerror("Import impossible", str(erreur), parent=self)
+            return
+        except Exception as erreur:
+            messagebox.showerror(
+                "Import impossible", f"Une erreur est survenue : {erreur}", parent=self
+            )
+            return
+        self.charger_zones()
+        messagebox.showinfo(
+            "HydroK", "L’étude a été importée avec succès.", parent=self
+        )
+
+    @staticmethod
+    def _nom_fichier_etude(nom):
+        nom_nettoye = re.sub(r'[\\/:*?"<>|]+', "_", str(nom)).strip(" .")
+        return nom_nettoye or "etude"
+
+    def _exporter_etude(self):
+        selection = self._selection()
+        if not selection:
+            messagebox.showinfo("HydroK", "Sélectionnez d'abord une étude.", parent=self)
+            return
+
+        zone_id, valeurs = selection
+        nom = self._nom_fichier_etude(valeurs[1])
+        fichier = filedialog.asksaveasfilename(
+            parent=self,
+            title="Exporter une étude HydroK",
+            initialfile=f"{nom}.hydrok",
+            defaultextension=".hydrok",
+            filetypes=[
+                ("Étude HydroK", "*.hydrok"),
+                ("Tous les fichiers", "*.*"),
+            ],
+        )
+        if not fichier:
+            return
+        try:
+            export_etude(zone_id, fichier)
+        except Exception as erreur:
+            messagebox.showerror(
+                "Export impossible", f"Une erreur est survenue : {erreur}", parent=self
+            )
+            return
+        messagebox.showinfo(
+            "HydroK", "L’étude a été exportée avec succès.", parent=self
+        )
 
     def _modifier_zone(self):
         selection = self._selection()
